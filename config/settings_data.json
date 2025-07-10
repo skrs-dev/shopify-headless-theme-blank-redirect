@@ -11,6 +11,20 @@
   "current": {
     "storefront_hostname": "store.roland.com.br",
     "multipass_login": false,
-    "content_for_index": []
+    "content_for_index": [],
+    "blocks": {
+      "7079518687644006178": {
+        "type": "shopify://apps/checkout-blocks/blocks/app-embed/b0024ca5-9de8-4bf0-a92f-cd0783877ae2",
+        "disabled": false,
+        "settings": {
+          "utm_id": true,
+          "utm_source": true,
+          "utm_medium": true,
+          "utm_campaign": true,
+          "utm_term": true,
+          "ref": true
+        }
+      }
+    }
   }
 }
