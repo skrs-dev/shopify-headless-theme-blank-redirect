@@ -10,7 +10,7 @@
 {
   "current": {
     "storefront_hostname": "store.roland.com.br",
-    "multipass_login": false,
+    "multipass_login": true,
     "content_for_index": [],
     "blocks": {
       "7079518687644006178": {
