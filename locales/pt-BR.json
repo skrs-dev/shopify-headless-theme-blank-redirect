@@ -17,7 +17,8 @@
       "localized_fields": {
         "additional_information": {
           "tax_credential_br": "CPF",
-          "shipping_credential_br": "CPF"
+          "shipping_credential_br": "CPF",
+          "title": "Informações Adicionais (apenas CPF)"
         }
       }
     }
