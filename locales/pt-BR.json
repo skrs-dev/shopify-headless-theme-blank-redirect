@@ -15,5 +15,12 @@
         "phone_placeholder": "Telefone (Obrigatório)"
       }
     }
+  },
+  "customer_accounts": {
+    "B2B": {
+      "locations": {
+        "tax_id": "CPF/CNPJ (tax id)"
+      }
+    }
   }
 }
