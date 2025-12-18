@@ -25,5 +25,12 @@
         "invalid_address": "O endereço selecionado é inválido, verifique se não há caracteres especiais. {{ update_address_link }} ou escolha outro."
       }
     }
+  },
+  "customer_accounts": {
+    "orders": {
+      "order_status": {
+        "complete_label": "Entregue"
+      }
+    }
   }
 }
