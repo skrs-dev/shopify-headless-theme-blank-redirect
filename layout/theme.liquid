@@ -173,6 +173,9 @@
       /**
        * Utilitário para gerenciar localStorage cross-domain usando iframe
        * Baseado em: https://jcubic.wordpress.com/2014/06/20/cross-domain-localstorage/
+       * 
+       * NOTA: O Shopify pode bloquear iframes com CSP (Content Security Policy).
+       * Se o iframe falhar, o código automaticamente usa cookies como fallback.
        */
       function CrossDomainStorage(iframeUrl) {
         this.iframe = null;
@@ -185,18 +188,66 @@
 
       CrossDomainStorage.prototype.init = function () {
         var self = this;
-        return new Promise(function (resolve) {
+        return new Promise(function (resolve, reject) {
           // Cria o iframe
           self.iframe = document.createElement('iframe');
           self.iframe.style.display = 'none';
           self.iframe.src = self.iframeUrl;
-          document.body.appendChild(self.iframe);
+
+          // Timeout para detectar se o iframe não carregar (CSP bloqueando)
+          var timeout = setTimeout(function () {
+            if (!self.ready) {
+              console.warn('[CrossDomainStorage] Iframe não carregou a tempo (possível bloqueio CSP)');
+              reject(new Error('Iframe timeout - CSP pode estar bloqueando'));
+            }
+          }, 5000);
+
+          // Tratamento de erro no iframe
+          self.iframe.onerror = function () {
+            clearTimeout(timeout);
+            console.error('[CrossDomainStorage] Erro ao carregar iframe (CSP bloqueando?)');
+            reject(new Error('Erro ao carregar iframe - CSP pode estar bloqueando'));
+          };
+
+          // Detecta se o iframe foi bloqueado imediatamente (CSP)
+          // Se o iframe não tiver contentWindow após um tempo, foi bloqueado
+          setTimeout(function () {
+            if (!self.ready && self.iframe) {
+              try {
+                // Tenta acessar o contentWindow
+                var test = self.iframe.contentWindow;
+                if (!test) {
+                  clearTimeout(timeout);
+                  reject(new Error('Iframe bloqueado por CSP - frame-ancestors'));
+                }
+              } catch (e) {
+                // Se der erro ao acessar, foi bloqueado
+                clearTimeout(timeout);
+                reject(new Error('Iframe bloqueado por CSP: ' + e.message));
+              }
+            }
+          }, 100);
 
           // Aguarda o iframe carregar
           self.iframe.onload = function () {
-            self.ready = true;
-            resolve();
+            clearTimeout(timeout);
+            // Verifica se o iframe realmente carregou (não foi bloqueado por CSP)
+            try {
+              // Tenta acessar o contentWindow para verificar se não foi bloqueado
+              if (self.iframe.contentWindow) {
+                self.ready = true;
+                resolve();
+              } else {
+                reject(new Error('Iframe bloqueado por CSP'));
+              }
+            } catch (e) {
+              // Se der erro ao acessar, provavelmente foi bloqueado por CSP
+              reject(new Error('Iframe bloqueado por CSP: ' + e.message));
+            }
           };
+
+          // Adiciona o iframe ao DOM
+          document.body.appendChild(self.iframe);
 
           // Listener para mensagens do iframe
           window.addEventListener('message', function (event) {
@@ -272,10 +323,22 @@
       var LIQUID_STORE_URL = 'https://totvsibi-integralmedica-dc.myshopify.com';
       var STORAGE_KEY = 'last-visited';
       var storageInstance = null;
+      var storageFailed = false; // Flag para indicar se o storage falhou
 
       function getStorage() {
-        if (!storageInstance) {
-          storageInstance = new CrossDomainStorage(LIQUID_STORE_URL + '/pages/cross-local-storage');
+        if (!storageInstance && !storageFailed) {
+          try {
+            storageInstance = new CrossDomainStorage(LIQUID_STORE_URL + '/pages/cross-local-storage');
+            // Se o init falhar, marca como falhou
+            storageInstance.readyPromise.catch(function (error) {
+              console.warn('[Last Visited] CrossDomainStorage falhou, usando fallback:', error);
+              storageFailed = true;
+              storageInstance = null;
+            });
+          } catch (error) {
+            console.warn('[Last Visited] Erro ao criar CrossDomainStorage, usando fallback:', error);
+            storageFailed = true;
+          }
         }
         return storageInstance;
       }
@@ -306,18 +369,40 @@
             - O localStorage armazena apenas o domínio(hostname), não a URL completa
         {% endcomment %}
 
-        // Função para obter last-visited do localStorage cross-domain
+        // Função para obter last-visited do localStorage cross-domain com fallback para cookie
         function getLastVisitedDomain() {
-          return getStorage().get(STORAGE_KEY).catch(function (error) {
-            console.error('[Last Visited] Erro ao obter do localStorage:', error);
-            return null;
+          var storage = getStorage();
+
+          // Se o storage falhou ou não está disponível, usa cookie como fallback
+          if (!storage || storageFailed) {
+            console.log('[Last Visited] Usando cookie como fallback (iframe bloqueado por CSP)');
+            return Promise.resolve(getCookie(STORAGE_KEY));
+          }
+
+          return storage.get(STORAGE_KEY).catch(function (error) {
+            console.warn('[Last Visited] Erro ao obter do localStorage, usando cookie:', error);
+            storageFailed = true;
+            // Fallback para cookie
+            return getCookie(STORAGE_KEY);
           });
         }
 
-        // Função para salvar last-visited no localStorage cross-domain
+        // Função para salvar last-visited no localStorage cross-domain com fallback para cookie
         function setLastVisitedDomain(domain) {
-          getStorage().set(STORAGE_KEY, domain).catch(function (error) {
-            console.error('[Last Visited] Erro ao salvar no localStorage:', error);
+          var storage = getStorage();
+
+          // Se o storage falhou ou não está disponível, usa cookie como fallback
+          if (!storage || storageFailed) {
+            console.log('[Last Visited] Salvando em cookie (iframe bloqueado por CSP)');
+            document.cookie = STORAGE_KEY + '=' + domain + '; Path=/; Max-Age=31536000; SameSite=Lax';
+            return Promise.resolve();
+          }
+
+          return storage.set(STORAGE_KEY, domain).catch(function (error) {
+            console.warn('[Last Visited] Erro ao salvar no localStorage, usando cookie:', error);
+            storageFailed = true;
+            // Fallback para cookie
+            document.cookie = STORAGE_KEY + '=' + domain + '; Path=/; Max-Age=31536000; SameSite=Lax';
           });
         }
 
@@ -364,6 +449,23 @@
               - Add discount code as param to the redirect URL if the`discount_code` cookie exists
                 - Cookie is deleted after to prevent it from being automatically added to other routes
             {% endcomment %}
+            var discountCode = getCookie('discount_code');
+            if (discountCode) {
+              redirectUrl.searchParams.append("discount", discountCode);
+              deleteCookie("discount_code");
+            }
+
+            window.storefrontRedirectUrl = redirectUrl;
+            window.location.replace(redirectUrl);
+          }
+        }).catch(function (error) {
+          // Se tudo falhar, usa o storefrontHostname padrão
+          console.error('[Last Visited] Erro ao obter last-visited, usando storefront padrão:', error);
+
+          if (currentHostname !== storefrontHostname) {
+            var redirectUrl = window.location.href.replace(currentHostname, storefrontHostname);
+            redirectUrl = new URL(redirectUrl);
+
             var discountCode = getCookie('discount_code');
             if (discountCode) {
               redirectUrl.searchParams.append("discount", discountCode);
