@@ -1,12 +1,79 @@
 {% layout none %}
 
+{% comment %}
+Página que funciona como endpoint para acessar localStorage cross-domain via fetch
+Aceita parâmetros via query string:
+- method: 'get', 'set', 'remove'
+- key: chave do localStorage
+- value: valor (apenas para 'set')
+
+Retorna JSON diretamente quando há parâmetros, ou HTML com script para postMessage (fallback)
+{% endcomment %}
+
+{%- assign method = request.params.method | default: '' -%}
+{%- assign key = request.params.key | default: '' -%}
+{%- assign value = request.params.value | default: '' -%}
+
+{%- assign callback = request.params.callback | default: '' -%}
+
+{%- if method != '' and key != '' -%}
+{%- comment -%} Retorna JavaScript que chama callback com resultado {%- endcomment -%}
+<script>
+  (function () {
+    var method = "{{ method }}";
+    var key = "{{ key }}";
+    var value = "{{ value }}";
+    var callback = "{{ callback }}";
+    var result = null;
+    var error = null;
+
+    try {
+      switch (method) {
+        case 'get':
+          result = localStorage.getItem(key);
+          break;
+        case 'set':
+          localStorage.setItem(key, value);
+          result = 'ok';
+          break;
+        case 'remove':
+          localStorage.removeItem(key);
+          result = 'ok';
+          break;
+        default:
+          error = 'Método inválido: ' + method;
+      }
+    } catch (e) {
+      error = e.message;
+    }
+
+    var response = {
+      success: error === null,
+      data: result,
+      error: error
+    };
+
+    // Se tiver callback, chama a função callback
+    if (callback && window.parent && window.parent[callback]) {
+      window.parent[callback](response);
+    } else if (callback && window[callback]) {
+      window[callback](response);
+    } else {
+      // Fallback: escreve JSON no documento
+      document.open();
+      document.write(JSON.stringify(response));
+      document.close();
+    }
+  })();
+</script>
+{%- else -%}
+{%- comment -%} Interface HTML para comunicação via postMessage (fallback) {%- endcomment -%}
 <!DOCTYPE html>
 <html lang="pt-BR">
 
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="frame-ancestors *">
   <title>Cross-Domain Storage</title>
 </head>
 
@@ -115,3 +182,4 @@
 </body>
 
 </html>
+{%- endif -%}

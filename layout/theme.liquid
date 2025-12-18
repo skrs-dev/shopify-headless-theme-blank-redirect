@@ -5,7 +5,6 @@
   <meta charset="utf-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="frame-ancestors *">
   <meta name="theme-color" content="">
   <link rel="canonical" href="{{ canonical_url }}">
   <link rel="preconnect" href="https://cdn.shopify.com" crossorigin>
@@ -172,177 +171,14 @@
     {%- if settings.storefront_hostname != blank and should_redirect -%}
     <script>
       /**
-       * Utilitário para gerenciar localStorage cross-domain usando iframe
-       * Baseado em: https://jcubic.wordpress.com/2014/06/20/cross-domain-localstorage/
+       * Sistema de last-visited usando localStorage cross-domain via fetch
        * 
-       * NOTA: O Shopify pode bloquear iframes com CSP (Content Security Policy).
-       * Se o iframe falhar, o código automaticamente usa cookies como fallback.
+       * Usa fetch para comunicar com a página cross-local-storage.liquid
+       * que acessa o localStorage no próprio domínio e retorna os dados via JSON.
        */
-      function CrossDomainStorage(iframeUrl) {
-        this.iframe = null;
-        this.iframeUrl = iframeUrl;
-        this.messageHandlers = {};
-        this.messageId = 0;
-        this.ready = false;
-        this.readyPromise = this.init();
-      }
 
-      CrossDomainStorage.prototype.init = function () {
-        var self = this;
-        return new Promise(function (resolve, reject) {
-          // Cria o iframe
-          self.iframe = document.createElement('iframe');
-          self.iframe.style.display = 'none';
-          self.iframe.src = self.iframeUrl;
-
-          // Timeout para detectar se o iframe não carregar (CSP bloqueando)
-          var timeout = setTimeout(function () {
-            if (!self.ready) {
-              console.warn('[CrossDomainStorage] Iframe não carregou a tempo (possível bloqueio CSP)');
-              reject(new Error('Iframe timeout - CSP pode estar bloqueando'));
-            }
-          }, 5000);
-
-          // Tratamento de erro no iframe
-          self.iframe.onerror = function () {
-            clearTimeout(timeout);
-            console.error('[CrossDomainStorage] Erro ao carregar iframe (CSP bloqueando?)');
-            reject(new Error('Erro ao carregar iframe - CSP pode estar bloqueando'));
-          };
-
-          // Detecta se o iframe foi bloqueado imediatamente (CSP)
-          // Se o iframe não tiver contentWindow após um tempo, foi bloqueado
-          setTimeout(function () {
-            if (!self.ready && self.iframe) {
-              try {
-                // Tenta acessar o contentWindow
-                var test = self.iframe.contentWindow;
-                if (!test) {
-                  clearTimeout(timeout);
-                  reject(new Error('Iframe bloqueado por CSP - frame-ancestors'));
-                }
-              } catch (e) {
-                // Se der erro ao acessar, foi bloqueado
-                clearTimeout(timeout);
-                reject(new Error('Iframe bloqueado por CSP: ' + e.message));
-              }
-            }
-          }, 100);
-
-          // Aguarda o iframe carregar
-          self.iframe.onload = function () {
-            clearTimeout(timeout);
-            // Verifica se o iframe realmente carregou (não foi bloqueado por CSP)
-            try {
-              // Tenta acessar o contentWindow para verificar se não foi bloqueado
-              if (self.iframe.contentWindow) {
-                self.ready = true;
-                resolve();
-              } else {
-                reject(new Error('Iframe bloqueado por CSP'));
-              }
-            } catch (e) {
-              // Se der erro ao acessar, provavelmente foi bloqueado por CSP
-              reject(new Error('Iframe bloqueado por CSP: ' + e.message));
-            }
-          };
-
-          // Adiciona o iframe ao DOM
-          document.body.appendChild(self.iframe);
-
-          // Listener para mensagens do iframe
-          window.addEventListener('message', function (event) {
-            self.handleMessage(event);
-          });
-        });
-      };
-
-      CrossDomainStorage.prototype.handleMessage = function (event) {
-        // Extrai o domínio do iframe URL
-        var iframeDomain = new URL(this.iframeUrl).origin;
-
-        // Verifica se a mensagem veio do iframe
-        if (event.origin !== iframeDomain) {
-          return;
-        }
-
-        try {
-          var response = JSON.parse(event.data);
-          var handler = this.messageHandlers[response.id];
-
-          if (handler) {
-            handler(response.data);
-            delete this.messageHandlers[response.id];
-          }
-        } catch (error) {
-          console.error('Erro ao processar mensagem do iframe:', error);
-        }
-      };
-
-      CrossDomainStorage.prototype.sendMessage = function (method, key, data) {
-        var self = this;
-        return this.readyPromise.then(function () {
-          if (!self.iframe || !self.iframe.contentWindow) {
-            throw new Error('Iframe não está pronto');
-          }
-
-          return new Promise(function (resolve) {
-            var id = 'msg_' + self.messageId++;
-            var message = {
-              id: id,
-              key: key,
-              method: method
-            };
-
-            if (data) {
-              message.data = data;
-            }
-
-            self.messageHandlers[id] = resolve;
-            var iframeOrigin = new URL(self.iframeUrl).origin;
-            self.iframe.contentWindow.postMessage(
-              JSON.stringify(message),
-              iframeOrigin
-            );
-          });
-        });
-      };
-
-      CrossDomainStorage.prototype.get = function (key) {
-        return this.sendMessage('get', key);
-      };
-
-      CrossDomainStorage.prototype.set = function (key, value) {
-        return this.sendMessage('set', key, value);
-      };
-
-      CrossDomainStorage.prototype.remove = function (key) {
-        return this.sendMessage('remove', key);
-      };
-
-      // URL da loja liquid (onde o iframe será hospedado)
       var LIQUID_STORE_URL = 'https://totvsibi-integralmedica-dc.myshopify.com';
       var STORAGE_KEY = 'last-visited';
-      var storageInstance = null;
-      var storageFailed = false; // Flag para indicar se o storage falhou
-
-      function getStorage() {
-        if (!storageInstance && !storageFailed) {
-          try {
-            storageInstance = new CrossDomainStorage(LIQUID_STORE_URL + '/pages/cross-local-storage');
-            // Se o init falhar, marca como falhou
-            storageInstance.readyPromise.catch(function (error) {
-              console.warn('[Last Visited] CrossDomainStorage falhou, usando fallback:', error);
-              storageFailed = true;
-              storageInstance = null;
-            });
-          } catch (error) {
-            console.warn('[Last Visited] Erro ao criar CrossDomainStorage, usando fallback:', error);
-            storageFailed = true;
-          }
-        }
-        return storageInstance;
-      }
 
       function getCookie(name) {
         name = name + '=';
@@ -354,10 +190,192 @@
             return cookie.substring(name.length, cookie.length);
           }
         }
+        return null;
+      }
+
+      function setCookie(name, value, options) {
+        var cookieString = name + '=' + value;
+
+        if (options) {
+          if (options.path) cookieString += '; Path=' + options.path;
+          if (options.maxAge) cookieString += '; Max-Age=' + options.maxAge;
+          if (options.sameSite) cookieString += '; SameSite=' + options.sameSite;
+          if (options.domain) cookieString += '; Domain=' + options.domain;
+        } else {
+          cookieString += '; Path=/; Max-Age=31536000; SameSite=Lax';
+        }
+
+        document.cookie = cookieString;
       }
 
       function deleteCookie(name) {
         document.cookie = name + '=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+      }
+
+      /**
+       * Função para acessar localStorage cross-domain
+       * Tenta usar iframe, se falhar usa cookies como fallback
+       */
+      var storageIframe = null;
+      var storageReady = false;
+      var storageMessageId = 0;
+      var storageCallbacks = {};
+
+      function initStorageIframe() {
+        if (storageIframe) return Promise.resolve();
+
+        return new Promise(function (resolve, reject) {
+          try {
+            storageIframe = document.createElement('iframe');
+            storageIframe.style.display = 'none';
+            storageIframe.src = LIQUID_STORE_URL + '/pages/cross-local-storage';
+
+            var timeout = setTimeout(function () {
+              if (!storageReady) {
+                console.warn('[CrossDomainStorage] Iframe timeout - usando cookies');
+                storageIframe = null;
+                reject(new Error('Iframe timeout'));
+              }
+            }, 3000);
+
+            storageIframe.onload = function () {
+              clearTimeout(timeout);
+              try {
+                if (storageIframe.contentWindow) {
+                  storageReady = true;
+                  resolve();
+                } else {
+                  throw new Error('Iframe bloqueado');
+                }
+              } catch (e) {
+                clearTimeout(timeout);
+                storageIframe = null;
+                reject(e);
+              }
+            };
+
+            storageIframe.onerror = function () {
+              clearTimeout(timeout);
+              storageIframe = null;
+              reject(new Error('Erro ao carregar iframe'));
+            };
+
+            // Listener para mensagens do iframe
+            window.addEventListener('message', function (event) {
+              if (event.origin !== LIQUID_STORE_URL.replace(/\/$/, '').replace(/^https?:\/\//, '').split('/')[0]) {
+                return;
+              }
+              try {
+                var response = JSON.parse(event.data);
+                if (response.id && storageCallbacks[response.id]) {
+                  storageCallbacks[response.id](response);
+                  delete storageCallbacks[response.id];
+                }
+              } catch (e) {
+                // Ignora erros de parse
+              }
+            });
+
+            document.body.appendChild(storageIframe);
+          } catch (e) {
+            reject(e);
+          }
+        });
+      }
+
+      function fetchStorage(method, key, value) {
+        return initStorageIframe()
+          .then(function () {
+            return new Promise(function (resolve, reject) {
+              var id = 'msg_' + storageMessageId++;
+              var message = {
+                id: id,
+                method: method,
+                key: key
+              };
+              if (value) message.data = value;
+
+              storageCallbacks[id] = function (response) {
+                if (response.error) {
+                  reject(new Error(response.error));
+                } else {
+                  resolve({ success: true, data: response.data });
+                }
+              };
+
+              try {
+                storageIframe.contentWindow.postMessage(JSON.stringify(message), LIQUID_STORE_URL);
+
+                // Timeout
+                setTimeout(function () {
+                  if (storageCallbacks[id]) {
+                    delete storageCallbacks[id];
+                    reject(new Error('Timeout'));
+                  }
+                }, 3000);
+              } catch (e) {
+                delete storageCallbacks[id];
+                reject(e);
+              }
+            });
+          })
+          .catch(function (error) {
+            // Se iframe falhar, retorna erro para usar fallback de cookies
+            return Promise.reject(error);
+          });
+      }
+
+      /**
+       * Obtém valor do localStorage cross-domain
+       */
+      function getLastVisitedDomain() {
+        return fetchStorage('get', STORAGE_KEY)
+          .then(function (response) {
+            if (response.success) {
+              return response.data;
+            }
+            // Fallback para cookie se fetch falhar
+            console.warn('[Last Visited] Fetch falhou, usando cookie:', response.error);
+            return getCookie(STORAGE_KEY);
+          })
+          .catch(function (error) {
+            console.error('[Last Visited] Erro ao obter via fetch, usando cookie:', error);
+            return getCookie(STORAGE_KEY);
+          });
+      }
+
+      /**
+       * Salva valor no localStorage cross-domain
+       */
+      function setLastVisitedDomain(domain) {
+        return fetchStorage('set', STORAGE_KEY, domain)
+          .then(function (response) {
+            if (!response.success) {
+              // Fallback para cookie se fetch falhar
+              console.warn('[Last Visited] Fetch falhou, salvando em cookie:', response.error);
+              var cookieOptions = {
+                path: '/',
+                maxAge: 31536000,
+                sameSite: 'Lax'
+              };
+              if (window.location.hostname.includes('.myshopify.com')) {
+                cookieOptions.domain = '.myshopify.com';
+              }
+              setCookie(STORAGE_KEY, domain, cookieOptions);
+            }
+          })
+          .catch(function (error) {
+            console.error('[Last Visited] Erro ao salvar via fetch, usando cookie:', error);
+            var cookieOptions = {
+              path: '/',
+              maxAge: 31536000,
+              sameSite: 'Lax'
+            };
+            if (window.location.hostname.includes('.myshopify.com')) {
+              cookieOptions.domain = '.myshopify.com';
+            }
+            setCookie(STORAGE_KEY, domain, cookieOptions);
+          });
       }
 
       if (!window.Shopify.designMode) {
@@ -365,118 +383,66 @@
         var storefrontHostname = "{{ settings.storefront_hostname }}";
 
         {% comment %} 
-          Handle last - visited redirect logic usando localStorage cross - domain
+          Handle last - visited redirect logic usando localStorage cross - domain via fetch
           - Se`last-visited` existe no localStorage cross - domain e contém um domínio, usa esse domínio ao invés de storefrontHostname
             - O localStorage armazena apenas o domínio(hostname), não a URL completa
         {% endcomment %}
 
-        // Função para obter last-visited do localStorage cross-domain com fallback para cookie
-        function getLastVisitedDomain() {
-          var storage = getStorage();
-
-          // Se o storage falhou ou não está disponível, usa cookie como fallback
-          if (!storage || storageFailed) {
-            console.log('[Last Visited] Usando cookie como fallback (iframe bloqueado por CSP)');
-            return Promise.resolve(getCookie(STORAGE_KEY));
-          }
-
-          return storage.get(STORAGE_KEY).catch(function (error) {
-            console.warn('[Last Visited] Erro ao obter do localStorage, usando cookie:', error);
-            storageFailed = true;
-            // Fallback para cookie
-            return getCookie(STORAGE_KEY);
-          });
-        }
-
-        // Função para salvar last-visited no localStorage cross-domain com fallback para cookie
-        function setLastVisitedDomain(domain) {
-          var storage = getStorage();
-
-          // Se o storage falhou ou não está disponível, usa cookie como fallback
-          if (!storage || storageFailed) {
-            console.log('[Last Visited] Salvando em cookie (iframe bloqueado por CSP)');
-            document.cookie = STORAGE_KEY + '=' + domain + '; Path=/; Max-Age=31536000; SameSite=Lax';
-            return Promise.resolve();
-          }
-
-          return storage.set(STORAGE_KEY, domain).catch(function (error) {
-            console.warn('[Last Visited] Erro ao salvar no localStorage, usando cookie:', error);
-            storageFailed = true;
-            // Fallback para cookie
-            document.cookie = STORAGE_KEY + '=' + domain + '; Path=/; Max-Age=31536000; SameSite=Lax';
-          });
-        }
-
         // Inicializa o redirecionamento
-        getLastVisitedDomain().then(function (lastVisitedDomain) {
-          console.log('[Last Visited] localStorage value:', lastVisitedDomain);
-          console.log('[Last Visited] Storefront hostname:', storefrontHostname);
-          console.log('[Last Visited] Current hostname:', currentHostname);
+        (function () {
+          getLastVisitedDomain().then(function (lastVisitedDomain) {
+            console.log('[Last Visited] localStorage value:', lastVisitedDomain);
+            console.log('[Last Visited] Storefront hostname:', storefrontHostname);
+            console.log('[Last Visited] Current hostname:', currentHostname);
 
-          var targetHostname = lastVisitedDomain && lastVisitedDomain !== storefrontHostname
-            ? lastVisitedDomain
-            : storefrontHostname;
+            var targetHostname = lastVisitedDomain && lastVisitedDomain !== storefrontHostname
+              ? lastVisitedDomain
+              : storefrontHostname;
 
-          console.log('[Last Visited] Target hostname (will redirect to):', targetHostname);
+            console.log('[Last Visited] Target hostname (will redirect to):', targetHostname);
 
-          // Salva o domínio atual se for diferente do último visitado
-          if (currentHostname !== lastVisitedDomain) {
-            setLastVisitedDomain(currentHostname);
-          }
+            // Salva o domínio atual se for diferente do último visitado
+            if (currentHostname !== lastVisitedDomain) {
+              setLastVisitedDomain(currentHostname);
+            }
 
-          if (currentHostname !== targetHostname) {
-            var redirectUrl = window.location.href.replace(currentHostname, targetHostname);
+            if (currentHostname !== targetHostname) {
+              var redirectUrl = window.location.href.replace(currentHostname, targetHostname);
 
-            var customRedirectsStr = "{{ settings.custom_redirects | newline_to_br | strip_newlines | replace: ' ', '' }}";
-            if (customRedirectsStr) {
-              var customRedirects = customRedirectsStr.split('<br/>');
+              var customRedirectsStr = "{{ settings.custom_redirects | newline_to_br | strip_newlines | replace: ' ', '' }}";
+              if (customRedirectsStr) {
+                var customRedirects = customRedirectsStr.split('<br/>');
 
-              for (var cri = 0; cri < customRedirects.length; cri += 1) {
-                var redirect = customRedirects[cri].split('>');
-                var fromPath = redirect[0];
-                var toPath = redirect[1];
+                for (var cri = 0; cri < customRedirects.length; cri += 1) {
+                  var redirect = customRedirects[cri].split('>');
+                  var fromPath = redirect[0];
+                  var toPath = redirect[1];
 
-                if (fromPath && toPath && redirectUrl.startsWith('https://' + targetHostname + fromPath)) {
-                  redirectUrl = redirectUrl.replace(targetHostname + fromPath, targetHostname + toPath);
-                  break;
+                  if (fromPath && toPath && redirectUrl.startsWith('https://' + targetHostname + fromPath)) {
+                    redirectUrl = redirectUrl.replace(targetHostname + fromPath, targetHostname + toPath);
+                    break;
+                  }
                 }
               }
-            }
 
-            redirectUrl = new URL(redirectUrl);
+              redirectUrl = new URL(redirectUrl);
 
-            {% comment %} 
+              {% comment %} 
               Handle discount code logic(e.g.xxx.myshopify.com / discount / freeshipping ? redirect =/products)
-              - Add discount code as param to the redirect URL if the`discount_code` cookie exists
-                - Cookie is deleted after to prevent it from being automatically added to other routes
-            {% endcomment %}
-            var discountCode = getCookie('discount_code');
-            if (discountCode) {
-              redirectUrl.searchParams.append("discount", discountCode);
-              deleteCookie("discount_code");
+                - Add discount code as param to the redirect URL if the`discount_code` cookie exists
+                  - Cookie is deleted after to prevent it from being automatically added to other routes
+              {% endcomment %}
+              var discountCode = getCookie('discount_code');
+              if (discountCode) {
+                redirectUrl.searchParams.append("discount", discountCode);
+                deleteCookie("discount_code");
+              }
+
+              window.storefrontRedirectUrl = redirectUrl;
+              window.location.replace(redirectUrl);
             }
-
-            window.storefrontRedirectUrl = redirectUrl;
-            window.location.replace(redirectUrl);
-          }
-        }).catch(function (error) {
-          // Se tudo falhar, usa o storefrontHostname padrão
-          console.error('[Last Visited] Erro ao obter last-visited, usando storefront padrão:', error);
-
-          if (currentHostname !== storefrontHostname) {
-            var redirectUrl = window.location.href.replace(currentHostname, storefrontHostname);
-            redirectUrl = new URL(redirectUrl);
-
-            var discountCode = getCookie('discount_code');
-            if (discountCode) {
-              redirectUrl.searchParams.append("discount", discountCode);
-              deleteCookie("discount_code");
-            }
-
-            window.storefrontRedirectUrl = redirectUrl;
-            window.location.replace(redirectUrl);
-          }
-        });
+          });
+        })();
       }
     </script>
     {%- endif -%}
