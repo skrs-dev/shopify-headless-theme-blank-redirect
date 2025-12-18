@@ -171,10 +171,10 @@
     {%- if settings.storefront_hostname != blank and should_redirect -%}
     <script>
       /**
-       * Sistema de last-visited usando localStorage cross-domain via fetch
+       * Sistema de last-visited usando cookies via fetch
        * 
        * Usa fetch para comunicar com a página cross-local-storage.liquid
-       * que acessa o localStorage no próprio domínio e retorna os dados via JSON.
+       * que salva/lê cookies no próprio domínio da loja liquid.
        */
 
       var LIQUID_STORE_URL = 'https://totvsibi-integralmedica-dc.myshopify.com';
@@ -193,188 +193,53 @@
         return null;
       }
 
-      function setCookie(name, value, options) {
-        var cookieString = name + '=' + value;
-
-        if (options) {
-          if (options.path) cookieString += '; Path=' + options.path;
-          if (options.maxAge) cookieString += '; Max-Age=' + options.maxAge;
-          if (options.sameSite) cookieString += '; SameSite=' + options.sameSite;
-          if (options.domain) cookieString += '; Domain=' + options.domain;
-        } else {
-          cookieString += '; Path=/; Max-Age=31536000; SameSite=Lax';
-        }
-
-        document.cookie = cookieString;
-      }
-
       function deleteCookie(name) {
         document.cookie = name + '=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
       }
 
       /**
-       * Função para acessar localStorage cross-domain
-       * Tenta usar iframe, se falhar usa cookies como fallback
-       */
-      var storageIframe = null;
-      var storageReady = false;
-      var storageMessageId = 0;
-      var storageCallbacks = {};
-
-      function initStorageIframe() {
-        if (storageIframe) return Promise.resolve();
-
-        return new Promise(function (resolve, reject) {
-          try {
-            storageIframe = document.createElement('iframe');
-            storageIframe.style.display = 'none';
-            storageIframe.src = LIQUID_STORE_URL + '/pages/cross-local-storage';
-
-            var timeout = setTimeout(function () {
-              if (!storageReady) {
-                console.warn('[CrossDomainStorage] Iframe timeout - usando cookies');
-                storageIframe = null;
-                reject(new Error('Iframe timeout'));
-              }
-            }, 3000);
-
-            storageIframe.onload = function () {
-              clearTimeout(timeout);
-              try {
-                if (storageIframe.contentWindow) {
-                  storageReady = true;
-                  resolve();
-                } else {
-                  throw new Error('Iframe bloqueado');
-                }
-              } catch (e) {
-                clearTimeout(timeout);
-                storageIframe = null;
-                reject(e);
-              }
-            };
-
-            storageIframe.onerror = function () {
-              clearTimeout(timeout);
-              storageIframe = null;
-              reject(new Error('Erro ao carregar iframe'));
-            };
-
-            // Listener para mensagens do iframe
-            window.addEventListener('message', function (event) {
-              if (event.origin !== LIQUID_STORE_URL.replace(/\/$/, '').replace(/^https?:\/\//, '').split('/')[0]) {
-                return;
-              }
-              try {
-                var response = JSON.parse(event.data);
-                if (response.id && storageCallbacks[response.id]) {
-                  storageCallbacks[response.id](response);
-                  delete storageCallbacks[response.id];
-                }
-              } catch (e) {
-                // Ignora erros de parse
-              }
-            });
-
-            document.body.appendChild(storageIframe);
-          } catch (e) {
-            reject(e);
-          }
-        });
-      }
-
-      function fetchStorage(method, key, value) {
-        return initStorageIframe()
-          .then(function () {
-            return new Promise(function (resolve, reject) {
-              var id = 'msg_' + storageMessageId++;
-              var message = {
-                id: id,
-                method: method,
-                key: key
-              };
-              if (value) message.data = value;
-
-              storageCallbacks[id] = function (response) {
-                if (response.error) {
-                  reject(new Error(response.error));
-                } else {
-                  resolve({ success: true, data: response.data });
-                }
-              };
-
-              try {
-                storageIframe.contentWindow.postMessage(JSON.stringify(message), LIQUID_STORE_URL);
-
-                // Timeout
-                setTimeout(function () {
-                  if (storageCallbacks[id]) {
-                    delete storageCallbacks[id];
-                    reject(new Error('Timeout'));
-                  }
-                }, 3000);
-              } catch (e) {
-                delete storageCallbacks[id];
-                reject(e);
-              }
-            });
-          })
-          .catch(function (error) {
-            // Se iframe falhar, retorna erro para usar fallback de cookies
-            return Promise.reject(error);
-          });
-      }
-
-      /**
-       * Obtém valor do localStorage cross-domain
+       * Obtém valor do cookie via fetch
        */
       function getLastVisitedDomain() {
-        return fetchStorage('get', STORAGE_KEY)
+        var url = LIQUID_STORE_URL + '/pages/cross-local-storage?method=get&key=' + encodeURIComponent(STORAGE_KEY);
+
+        return fetch(url, { mode: 'cors', credentials: 'omit' })
           .then(function (response) {
-            if (response.success) {
-              return response.data;
+            return response.text();
+          })
+          .then(function (text) {
+            try {
+              var json = JSON.parse(text);
+              if (json.success) {
+                return json.data;
+              }
+            } catch (e) {
+              // Ignora erro de parse
             }
-            // Fallback para cookie se fetch falhar
-            console.warn('[Last Visited] Fetch falhou, usando cookie:', response.error);
+            // Fallback para cookie local
             return getCookie(STORAGE_KEY);
           })
           .catch(function (error) {
-            console.error('[Last Visited] Erro ao obter via fetch, usando cookie:', error);
+            console.warn('[Last Visited] Erro ao obter via fetch, usando cookie local:', error);
             return getCookie(STORAGE_KEY);
           });
       }
 
       /**
-       * Salva valor no localStorage cross-domain
+       * Salva valor no cookie via fetch
        */
       function setLastVisitedDomain(domain) {
-        return fetchStorage('set', STORAGE_KEY, domain)
-          .then(function (response) {
-            if (!response.success) {
-              // Fallback para cookie se fetch falhar
-              console.warn('[Last Visited] Fetch falhou, salvando em cookie:', response.error);
-              var cookieOptions = {
-                path: '/',
-                maxAge: 31536000,
-                sameSite: 'Lax'
-              };
-              if (window.location.hostname.includes('.myshopify.com')) {
-                cookieOptions.domain = '.myshopify.com';
-              }
-              setCookie(STORAGE_KEY, domain, cookieOptions);
-            }
-          })
+        var url = LIQUID_STORE_URL + '/pages/cross-local-storage?method=set&key=' + encodeURIComponent(STORAGE_KEY) + '&value=' + encodeURIComponent(domain);
+
+        return fetch(url, { mode: 'cors', credentials: 'omit' })
           .catch(function (error) {
-            console.error('[Last Visited] Erro ao salvar via fetch, usando cookie:', error);
-            var cookieOptions = {
-              path: '/',
-              maxAge: 31536000,
-              sameSite: 'Lax'
-            };
+            console.warn('[Last Visited] Erro ao salvar via fetch:', error);
+            // Fallback: salva cookie local
+            var cookieString = STORAGE_KEY + '=' + domain + '; Path=/; Max-Age=31536000; SameSite=Lax';
             if (window.location.hostname.includes('.myshopify.com')) {
-              cookieOptions.domain = '.myshopify.com';
+              cookieString += '; Domain=.myshopify.com';
             }
-            setCookie(STORAGE_KEY, domain, cookieOptions);
+            document.cookie = cookieString;
           });
       }
 
