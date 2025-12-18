@@ -16,8 +16,8 @@
       },
       "localized_fields": {
         "additional_information": {
-          "tax_credential_br": "CPF",
-          "shipping_credential_br": "CPF",
+          "tax_credential_br": "CPF (Obrigatório)",
+          "shipping_credential_br": "CPF (Obrigatório)",
           "title": "Informações Adicionais (apenas CPF)"
         }
       },
