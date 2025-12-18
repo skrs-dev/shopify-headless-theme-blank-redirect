@@ -11,6 +11,13 @@
   "current": {
     "storefront_hostname": "darkness.com.br",
     "multipass_login": true,
-    "content_for_index": []
+    "content_for_index": [],
+    "blocks": {
+      "7194384644902525832": {
+        "type": "shopify://apps/fokkio-automatic-gift/blocks/widget/866ae171-054c-4fa5-8677-5f391a13902b",
+        "disabled": false,
+        "settings": {}
+      }
+    }
   }
 }
