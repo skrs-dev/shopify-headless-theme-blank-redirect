@@ -7,4 +7,15 @@
  * made to this file may be overwritten.
  * ------------------------------------------------------------
  */
-{}
+{
+  "shopify": {
+    "checkout": {
+      "localized_fields": {
+        "additional_information": {
+          "tax_credential_br": "CPF",
+          "shipping_credential_br": "CPF"
+        }
+      }
+    }
+  }
+}
