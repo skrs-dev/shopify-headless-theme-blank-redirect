@@ -1,45 +1,51 @@
 {% layout none %}
 
 {% comment %}
-Página que funciona como endpoint para acessar localStorage cross-domain via fetch
+Endpoint para salvar/ler cookies via fetch
 Aceita parâmetros via query string:
-- method: 'get', 'set', 'remove'
-- key: chave do localStorage
+- method: 'get' ou 'set'
+- key: chave do cookie
 - value: valor (apenas para 'set')
-
-Retorna JSON diretamente quando há parâmetros, ou HTML com script para postMessage (fallback)
 {% endcomment %}
 
 {%- assign method = request.params.method | default: '' -%}
 {%- assign key = request.params.key | default: '' -%}
 {%- assign value = request.params.value | default: '' -%}
 
-{%- assign callback = request.params.callback | default: '' -%}
-
-{%- if method != '' and key != '' -%}
-{%- comment -%} Retorna JavaScript que chama callback com resultado {%- endcomment -%}
 <script>
   (function () {
     var method = "{{ method }}";
     var key = "{{ key }}";
     var value = "{{ value }}";
-    var callback = "{{ callback }}";
     var result = null;
     var error = null;
 
     try {
       switch (method) {
-        case 'get':
-          result = localStorage.getItem(key);
+        case 'get': {
+          // Lê cookie
+          var nameEQ = key + '=';
+          var cookies = document.cookie.split(';');
+          for (var i = 0; i < cookies.length; i++) {
+            var cookie = cookies[i].trim();
+            if (cookie.indexOf(nameEQ) === 0) {
+              result = cookie.substring(nameEQ.length, cookie.length);
+              break;
+            }
+          }
           break;
-        case 'set':
-          localStorage.setItem(key, value);
+        }
+        case 'set': {
+          // Salva cookie com domínio compartilhado para .myshopify.com
+          var cookieString = key + '=' + value + '; Path=/; Max-Age=31536000; SameSite=Lax';
+          // Se for subdomínio do myshopify.com, usa domínio compartilhado
+          if (window.location.hostname.includes('.myshopify.com')) {
+            cookieString += '; Domain=.myshopify.com';
+          }
+          document.cookie = cookieString;
           result = 'ok';
           break;
-        case 'remove':
-          localStorage.removeItem(key);
-          result = 'ok';
-          break;
+        }
         default:
           error = 'Método inválido: ' + method;
       }
@@ -53,133 +59,9 @@ Retorna JSON diretamente quando há parâmetros, ou HTML com script para postMes
       error: error
     };
 
-    // Se tiver callback, chama a função callback
-    if (callback && window.parent && window.parent[callback]) {
-      window.parent[callback](response);
-    } else if (callback && window[callback]) {
-      window[callback](response);
-    } else {
-      // Fallback: escreve JSON no documento
-      document.open();
-      document.write(JSON.stringify(response));
-      document.close();
-    }
+    // Retorna JSON diretamente
+    document.open();
+    document.write(JSON.stringify(response));
+    document.close();
   })();
 </script>
-{%- else -%}
-{%- comment -%} Interface HTML para comunicação via postMessage (fallback) {%- endcomment -%}
-<!DOCTYPE html>
-<html lang="pt-BR">
-
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cross-Domain Storage</title>
-</head>
-
-<body>
-  <script>
-    (function () {
-      // Listener para mensagens do iframe
-      window.addEventListener('message', function (event) {
-        // IMPORTANTE: Verifique a origem para segurança
-        // Substitua pelos domínios que vão usar este storage
-        const allowedOrigins = [
-          'https://nutrify.com.br',
-          'https://nutrify-17ae994c3cfdb7d38bce.o2.myshopify.dev',
-          // Adicione outros domínios aqui
-        ];
-
-        // Verifica se a origem é permitida
-        const origin = event.origin;
-        const isAllowed = allowedOrigins.some(function (allowed) {
-          const allowedDomain = allowed.replace(/^https?:\/\//, '').split('/')[0];
-          const originDomain = origin.replace(/^https?:\/\//, '').split('/')[0];
-          return originDomain === allowedDomain || originDomain.endsWith('.' + allowedDomain);
-        });
-
-        if (!isAllowed) {
-          console.warn('Origem não permitida:', origin);
-          return;
-        }
-
-        let payload;
-        try {
-          payload = JSON.parse(event.data);
-          const id = payload.id;
-          const key = payload.key;
-          const method = payload.method;
-          const data = payload.data;
-
-          switch (method) {
-            case 'get': {
-              const value = localStorage.getItem(key);
-              // Envia resposta de volta para o iframe
-              if (event.source) {
-                event.source.postMessage(
-                  JSON.stringify({
-                    id: id,
-                    data: value
-                  }),
-                  event.origin
-                );
-              }
-              break;
-            }
-
-            case 'set': {
-              localStorage.setItem(key, data);
-              // Confirma que foi salvo
-              if (event.source) {
-                event.source.postMessage(
-                  JSON.stringify({
-                    id: id,
-                    data: 'ok'
-                  }),
-                  event.origin
-                );
-              }
-              break;
-            }
-
-            case 'remove': {
-              localStorage.removeItem(key);
-              // Confirma que foi removido
-              if (event.source) {
-                event.source.postMessage(
-                  JSON.stringify({
-                    id: id,
-                    data: 'ok'
-                  }),
-                  event.origin
-                );
-              }
-              break;
-            }
-          }
-        } catch (error) {
-          console.error('Erro ao processar mensagem:', error);
-          // Envia erro de volta
-          if (event.source && payload) {
-            event.source.postMessage(
-              JSON.stringify({
-                id: payload.id,
-                data: null,
-                error: error.message
-              }),
-              event.origin
-            );
-          }
-        }
-      });
-
-      // Notifica que o iframe está pronto
-      if (window.parent !== window) {
-        window.parent.postMessage('iframe-ready', '*');
-      }
-    })();
-  </script>
-</body>
-
-</html>
-{%- endif -%}
