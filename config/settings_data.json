@@ -9,7 +9,7 @@
  */
 {
   "current": {
-    "storefront_hostname": "https://www.darkness.com.br/",
+    "storefront_hostname": "darkness.com.br",
     "multipass_login": true,
     "content_for_index": []
   }
