@@ -19,7 +19,7 @@
   "customer_accounts": {
     "B2B": {
       "locations": {
-        "tax_id": "CPF/CNPJ (tax id)"
+        "tax_id": "CPF/CNPJ"
       }
     }
   }
