@@ -11,7 +11,8 @@
   "shopify": {
     "checkout": {
       "contact": {
-        "phone_label": "Telefone (Obrigatório)"
+        "phone_label": "Telefone (Obrigatório)",
+        "phone_placeholder": "Telefone (Obrigatório)"
       }
     }
   }
