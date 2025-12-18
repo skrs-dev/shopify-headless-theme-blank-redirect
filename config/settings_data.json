@@ -15,7 +15,7 @@
     "blocks": {
       "7194384644902525832": {
         "type": "shopify://apps/fokkio-automatic-gift/blocks/widget/866ae171-054c-4fa5-8677-5f391a13902b",
-        "disabled": false,
+        "disabled": true,
         "settings": {}
       }
     }
