@@ -13,13 +13,12 @@
       "contact": {
         "phone_label": "Telefone (Obrigatório)",
         "phone_placeholder": "Telefone (Obrigatório)"
-      }
-    }
-  },
-  "customer_accounts": {
-    "B2B": {
-      "locations": {
-        "tax_id": "CPF/CNPJ"
+      },
+      "localized_fields": {
+        "additional_information": {
+          "tax_credential_br": "CPF",
+          "shipping_credential_br": "CPF"
+        }
       }
     }
   }
