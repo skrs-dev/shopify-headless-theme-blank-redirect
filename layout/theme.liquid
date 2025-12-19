@@ -167,9 +167,9 @@
     - The current template is not the login page, unless multipass login is enabled
     {% endcomment %}
     {%- assign should_redirect = template != blank and template.name != 'login' or settings.multipass_login -%}
-
     {%- assign customer_last_link = customer.metafields.custom.last_link -%}
-    {%- if settings.storefront_hostname != blank and should_redirect -%}
+
+    {%- if should_redirect -%}
     <script>
       /**
        * Utilitário para gerenciar localStorage cross-domain usando iframe
@@ -323,6 +323,7 @@
       // URL da loja liquid (onde o iframe será hospedado)
       var LIQUID_STORE_URL = 'https://totvsibi-integralmedica-dc.myshopify.com';
       var STORAGE_KEY = 'last-visited';
+      var CUSTOMER_LINK_KEY = 'customer-last-link';
       var storageInstance = null;
       var storageFailed = false; // Flag para indicar se o storage falhou
 
@@ -360,79 +361,75 @@
         document.cookie = name + '=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
       }
 
+      // Função para obter last-visited do localStorage cross-domain com fallback para cookie
+      function getLastVisitedDomain() {
+        var storage = getStorage();
+
+        // Se o storage falhou ou não está disponível, usa cookie como fallback
+        if (!storage || storageFailed) {
+          console.log('[Last Visited] Usando cookie como fallback (iframe bloqueado por CSP)');
+          return Promise.resolve(getCookie(STORAGE_KEY));
+        }
+
+        return storage.get(STORAGE_KEY).catch(function (error) {
+          console.warn('[Last Visited] Erro ao obter do localStorage, usando cookie:', error);
+          storageFailed = true;
+          // Fallback para cookie
+          return getCookie(STORAGE_KEY);
+        });
+      }
+
+      // Função para salvar last-visited no localStorage cross-domain com fallback para cookie
+      function setLastVisitedDomain(domain) {
+        var storage = getStorage();
+
+        // Se o storage falhou ou não está disponível, usa cookie como fallback
+        if (!storage || storageFailed) {
+          console.log('[Last Visited] Salvando em cookie (iframe bloqueado por CSP)');
+          document.cookie = STORAGE_KEY + '=' + domain + '; Path=/; Max-Age=31536000; SameSite=Lax';
+          return Promise.resolve();
+        }
+
+        return storage.set(STORAGE_KEY, domain).catch(function (error) {
+          console.warn('[Last Visited] Erro ao salvar no localStorage, usando cookie:', error);
+          storageFailed = true;
+          // Fallback para cookie
+          document.cookie = STORAGE_KEY + '=' + domain + '; Path=/; Max-Age=31536000; SameSite=Lax';
+        });
+      }
+
+      // Função para obter o customer link do localStorage
+      function getCustomerLinkFromStorage() {
+        var storage = getStorage();
+        if (!storage || storageFailed) {
+          return Promise.resolve(getCookie(CUSTOMER_LINK_KEY));
+        }
+        return storage.get(CUSTOMER_LINK_KEY).catch(function () {
+          return getCookie(CUSTOMER_LINK_KEY);
+        });
+      }
+
+      // Função para salvar o customer link no localStorage
+      function setCustomerLinkToStorage(link) {
+        var storage = getStorage();
+        if (!storage || storageFailed) {
+          document.cookie = CUSTOMER_LINK_KEY + '=' + link + '; Path=/; Max-Age=31536000; SameSite=Lax';
+          return Promise.resolve();
+        }
+        return storage.set(CUSTOMER_LINK_KEY, link).catch(function () {
+          document.cookie = CUSTOMER_LINK_KEY + '=' + link + '; Path=/; Max-Age=31536000; SameSite=Lax';
+        });
+      }
+
       if (!window.Shopify.designMode) {
         var currentHostname = window.location.hostname;
-        var customerLastLink = "{{ customer_last_link }}";
-        var defaultStorefront = "{{ settings.storefront_hostname }}";
+        var storefrontHostname = "{{ settings.storefront_hostname }}";
+        var customerLastLink = "{{ customer.metafields.custom.last_link }}";
 
         {% comment %} 
-          Handle last - visited redirect logic usando localStorage cross - domain
-          - Se`last-visited` existe no localStorage cross - domain e contém um domínio, usa esse domínio ao invés de storefrontHostname
-            - O localStorage armazena apenas o domínio(hostname), não a URL completa
+          Handle customer metafield redirect logic
+          - Prioridade: 1. Metafield do customer, 2. localStorage do customer, 3. last-visited, 4. settings
         {% endcomment %}
-
-        // Função para obter last-visited do localStorage cross-domain com fallback para cookie
-        function getLastVisitedDomain() {
-          var storage = getStorage();
-
-          // Se o storage falhou ou não está disponível, usa cookie como fallback
-          if (!storage || storageFailed) {
-            console.log('[Last Visited] Usando cookie como fallback (iframe bloqueado por CSP)');
-            return Promise.resolve(getCookie(STORAGE_KEY));
-          }
-
-          return storage.get(STORAGE_KEY).catch(function (error) {
-            console.warn('[Last Visited] Erro ao obter do localStorage, usando cookie:', error);
-            storageFailed = true;
-            // Fallback para cookie
-            return getCookie(STORAGE_KEY);
-          });
-        }
-
-        // Função para salvar last-visited no localStorage cross-domain com fallback para cookie
-        function setLastVisitedDomain(domain) {
-          var storage = getStorage();
-
-          // Se o storage falhou ou não está disponível, usa cookie como fallback
-          if (!storage || storageFailed) {
-            console.log('[Last Visited] Salvando em cookie (iframe bloqueado por CSP)');
-            document.cookie = STORAGE_KEY + '=' + domain + '; Path=/; Max-Age=31536000; SameSite=Lax';
-            return Promise.resolve();
-          }
-
-          return storage.set(STORAGE_KEY, domain).catch(function (error) {
-            console.warn('[Last Visited] Erro ao salvar no localStorage, usando cookie:', error);
-            storageFailed = true;
-            // Fallback para cookie
-            document.cookie = STORAGE_KEY + '=' + domain + '; Path=/; Max-Age=31536000; SameSite=Lax';
-          });
-        }
-
-        // Chave separada para salvar o metafield do customer
-        var CUSTOMER_LINK_KEY = 'customer-last-link';
-
-        // Função para obter o customer link do localStorage
-        function getCustomerLinkFromStorage() {
-          var storage = getStorage();
-          if (!storage || storageFailed) {
-            return Promise.resolve(getCookie(CUSTOMER_LINK_KEY));
-          }
-          return storage.get(CUSTOMER_LINK_KEY).catch(function () {
-            return getCookie(CUSTOMER_LINK_KEY);
-          });
-        }
-
-        // Função para salvar o customer link no localStorage
-        function setCustomerLinkToStorage(link) {
-          var storage = getStorage();
-          if (!storage || storageFailed) {
-            document.cookie = CUSTOMER_LINK_KEY + '=' + link + '; Path=/; Max-Age=31536000; SameSite=Lax';
-            return Promise.resolve();
-          }
-          return storage.set(CUSTOMER_LINK_KEY, link).catch(function () {
-            document.cookie = CUSTOMER_LINK_KEY + '=' + link + '; Path=/; Max-Age=31536000; SameSite=Lax';
-          });
-        }
 
         // Inicializa o redirecionamento
         getLastVisitedDomain().then(function (lastVisitedDomain) {
@@ -440,92 +437,128 @@
             console.log('[Last Visited] localStorage last-visited:', lastVisitedDomain);
             console.log('[Last Visited] Customer metafield:', customerLastLink);
             console.log('[Last Visited] localStorage customer-link:', storedCustomerLink);
-            console.log('[Last Visited] Settings storefront:', "{{ settings.storefront_hostname }}");
+            console.log('[Last Visited] Storefront hostname:', storefrontHostname);
             console.log('[Last Visited] Current hostname:', currentHostname);
 
+            var redirectUrl;
             var targetHostname;
 
             // Prioridade: 1. Metafield do customer, 2. localStorage do customer, 3. last-visited, 4. settings
             if (customerLastLink) {
-              // Se o metafield existe, usa ele e salva no localStorage para backup
-              targetHostname = customerLastLink;
+              // Se o metafield existe, usa ele diretamente e salva no localStorage
+              redirectUrl = customerLastLink;
               console.log('[Last Visited] Usando metafield do customer e salvando no localStorage');
               setCustomerLinkToStorage(customerLastLink);
             } else if (storedCustomerLink) {
               // Se não tem metafield mas tem no localStorage, usa o localStorage
-              targetHostname = storedCustomerLink;
+              redirectUrl = storedCustomerLink;
               console.log('[Last Visited] Metafield vazio, usando localStorage do customer');
-            } else if (lastVisitedDomain && lastVisitedDomain !== "{{ settings.storefront_hostname }}") {
-              // Se não tem metafield nem localStorage do customer, usa last-visited
-              targetHostname = lastVisitedDomain;
-              console.log('[Last Visited] Usando last-visited domain');
             } else {
-              // Fallback para settings
-              targetHostname = "{{ settings.storefront_hostname }}";
-              console.log('[Last Visited] Usando settings storefront_hostname');
-            }
+              // Se não tem metafield nem localStorage, usa a lógica original de hostname
+              // Mas só se storefrontHostname estiver configurado
+              if (!storefrontHostname) {
+                console.log('[Last Visited] Sem metafield, localStorage e storefront_hostname. Não há redirect.');
+                return;
+              }
 
-            console.log('[Last Visited] Target hostname (will redirect to):', targetHostname);
+              targetHostname = lastVisitedDomain && lastVisitedDomain !== storefrontHostname
+                ? lastVisitedDomain
+                : storefrontHostname;
 
-            // Salva o domínio atual no last-visited se for diferente
-            if (currentHostname !== lastVisitedDomain) {
-              setLastVisitedDomain(currentHostname);
-            }
+              console.log('[Last Visited] Target hostname (will redirect to):', targetHostname);
 
-            if (currentHostname !== targetHostname) {
-              var redirectUrl = window.location.href.replace(currentHostname, targetHostname);
+              // Salva o domínio atual se for diferente do último visitado
+              if (currentHostname !== lastVisitedDomain) {
+                setLastVisitedDomain(currentHostname);
+              }
 
-            var customRedirectsStr = "{{ settings.custom_redirects | newline_to_br | strip_newlines | replace: ' ', '' }}";
-            if (customRedirectsStr) {
-              var customRedirects = customRedirectsStr.split('<br/>');
-
-              for (var cri = 0; cri < customRedirects.length; cri += 1) {
-                var redirect = customRedirects[cri].split('>');
-                var fromPath = redirect[0];
-                var toPath = redirect[1];
-
-                if (fromPath && toPath && redirectUrl.startsWith('https://' + targetHostname + fromPath)) {
-                  redirectUrl = redirectUrl.replace(targetHostname + fromPath, targetHostname + toPath);
-                  break;
-                }
+              if (currentHostname !== targetHostname) {
+                redirectUrl = window.location.href.replace(currentHostname, targetHostname);
+              } else {
+                // Mesmo hostname, não precisa redirecionar
+                return;
               }
             }
 
-            redirectUrl = new URL(redirectUrl);
+            if (redirectUrl) {
+              // Se for URL completa (metafield ou localStorage), usa diretamente
+              var isFullUrl = redirectUrl.startsWith('http://') || redirectUrl.startsWith('https://');
+              
+              if (isFullUrl) {
+                window.storefrontRedirectUrl = redirectUrl;
+                console.log('[Last Visited] Redirecionando para:', redirectUrl);
+                window.location.replace(redirectUrl);
+                return;
+              }
 
-            {% comment %} 
-              Handle discount code logic(e.g.xxx.myshopify.com / discount / freeshipping ? redirect =/products)
-              - Add discount code as param to the redirect URL if the`discount_code` cookie exists
-                - Cookie is deleted after to prevent it from being automatically added to other routes
-            {% endcomment %}
-            var discountCode = getCookie('discount_code');
-            if (discountCode) {
-              redirectUrl.searchParams.append("discount", discountCode);
-              deleteCookie("discount_code");
+              // Para hostname, processa normalmente com custom redirects e discount codes
+              redirectUrl = new URL(redirectUrl);
+
+              var customRedirectsStr = "{{ settings.custom_redirects | newline_to_br | strip_newlines | replace: ' ', '' }}";
+              if (customRedirectsStr) {
+                var customRedirects = customRedirectsStr.split('<br/>');
+
+                for (var cri = 0; cri < customRedirects.length; cri += 1) {
+                  var redirect = customRedirects[cri].split('>');
+                  var fromPath = redirect[0];
+                  var toPath = redirect[1];
+
+                  if (fromPath && toPath && redirectUrl.href.startsWith('https://' + targetHostname + fromPath)) {
+                    redirectUrl = new URL(redirectUrl.href.replace(targetHostname + fromPath, targetHostname + toPath));
+                    break;
+                  }
+                }
+              }
+
+              {% comment %} 
+                Handle discount code logic(e.g.xxx.myshopify.com / discount / freeshipping ? redirect =/products)
+                - Add discount code as param to the redirect URL if the`discount_code` cookie exists
+                  - Cookie is deleted after to prevent it from being automatically added to other routes
+              {% endcomment %}
+              var discountCode = getCookie('discount_code');
+              if (discountCode) {
+                redirectUrl.searchParams.append("discount", discountCode);
+                deleteCookie("discount_code");
+              }
+
+              window.storefrontRedirectUrl = redirectUrl;
+              window.location.replace(redirectUrl);
             }
-
-            window.storefrontRedirectUrl = redirectUrl;
-            window.location.replace(redirectUrl);
-          }
           });
         }).catch(function (error) {
-          // Se tudo falhar, usa o customerLastLink ou defaultStorefront
+          // Se tudo falhar, usa o customerLastLink ou storefrontHostname padrão
           console.error('[Last Visited] Erro ao obter last-visited, usando fallback:', error);
-          console.log('[Last Visited] Customer last_link:', customerLastLink);
 
-          var fallbackHostname = customerLastLink || defaultStorefront;
-          if (currentHostname !== fallbackHostname) {
-            var redirectUrl = window.location.href.replace(currentHostname, fallbackHostname);
-            redirectUrl = new URL(redirectUrl);
+          var redirectUrl;
+          
+          // Prioridade: metafield > localStorage > settings
+          if (customerLastLink) {
+            redirectUrl = customerLastLink;
+          } else {
+            var storedLink = getCookie(CUSTOMER_LINK_KEY);
+            if (storedLink) {
+              redirectUrl = storedLink;
+            } else if (storefrontHostname && currentHostname !== storefrontHostname) {
+              redirectUrl = window.location.href.replace(currentHostname, storefrontHostname);
+            } else {
+              return; // Sem metafield, localStorage ou storefrontHostname, não há redirect
+            }
+          }
 
-            var discountCode = getCookie('discount_code');
-            if (discountCode) {
-              redirectUrl.searchParams.append("discount", discountCode);
-              deleteCookie("discount_code");
+          if (redirectUrl) {
+            var isFullUrl = redirectUrl.startsWith('http://') || redirectUrl.startsWith('https://');
+            
+            if (!isFullUrl) {
+              redirectUrl = new URL(redirectUrl);
+              var discountCode = getCookie('discount_code');
+              if (discountCode) {
+                redirectUrl.searchParams.append("discount", discountCode);
+                deleteCookie("discount_code");
+              }
             }
 
-            window.storefrontRedirectUrl = redirectUrl;
-            window.location.replace(redirectUrl);
+            window.storefrontRedirectUrl = redirectUrl instanceof URL ? redirectUrl.href : redirectUrl;
+            window.location.replace(window.storefrontRedirectUrl);
           }
         });
       }
@@ -538,24 +571,34 @@
 
   {%- if should_redirect -%}
   <div class="redirect">
-    {%- assign redirect_target = customer_last_link | default: settings.storefront_hostname -%}
-    {%- if redirect_target != blank -%}
-    <h1>Redirecting... {{ customer.metafields.custom.last_link }}</h1>
+    <h1>Redirecting...</h1>
     <p>
-      <a id="redirect-link" href="https://{{ redirect_target }}/">Click here</a>
+      {%- if customer_last_link != blank -%}
+        {%- if customer_last_link contains 'http://' or customer_last_link contains 'https://' -%}
+          <a id="redirect-link" href="{{ customer_last_link }}">Click here</a>
+        {%- else -%}
+          <a id="redirect-link" href="https://{{ customer_last_link }}/">Click here</a>
+        {%- endif -%}
+      {%- elsif settings.storefront_hostname != blank -%}
+        <a id="redirect-link" href="https://{{ settings.storefront_hostname }}/">Click here</a>
+      {%- else -%}
+        <a id="redirect-link" href="#">Click here</a>
+      {%- endif -%}
       if you are not automically redirected.
     </p>
     <script>
       if (!window.Shopify.designMode) {
         var redirectLink = document.getElementById("redirect-link");
-        redirectLink.href = window.storefrontRedirectUrl;
+        setTimeout(function() {
+          if (window.storefrontRedirectUrl) {
+            redirectLink.href = window.storefrontRedirectUrl;
+          } else if (redirectLink.href === '#' || redirectLink.href.endsWith('#')) {
+            // Se não há redirect disponível, esconde a mensagem
+            document.querySelector('.redirect').innerHTML = '<h1>Redirect URL not set</h1><p>Configure the redirects in "Theme settings > Storefront" or set the customer metafield "custom.last_link".</p>';
+          }
+        }, 200);
       }
     </script>
-    {%- else -%}
-    <h1>Redirect URL not set</h1>
-    {{ customer.metafields.custom.last_link }}
-    <p>Configure the redirects in "Theme settings > Storefront" or set the customer metafield "custom.last_link".</p>
-    {%- endif -%}
   </div>
   {%- endif -%}
 </body>
