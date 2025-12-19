@@ -16,6 +16,9 @@
           "shipping_credential_br": "CPF",
           "title": "Informações adicionais (apenas CPF)"
         }
+      },
+      "customer_account": {
+        "invalid_address": "O endereço selecionado é inválido, verifique se há caracteres especiais. {{ update_address_link }} ou escolha outro."
       }
     }
   }
