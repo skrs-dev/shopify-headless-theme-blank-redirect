@@ -19,6 +19,9 @@
       },
       "customer_account": {
         "invalid_address": "O endereço selecionado é inválido, verifique se há caracteres especiais. {{ update_address_link }} ou escolha outro."
+      },
+      "shipping_errors": {
+        "invalid_selected_address_with_update_link": "O endereço selecionado é inválido, verifique se há caracteres especiais. {{ update_address_link }} ou escolha outro."
       }
     }
   }
