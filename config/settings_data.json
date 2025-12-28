@@ -22,6 +22,15 @@
           "utm_term": true,
           "ref": true
         }
+      },
+      "12331707899451543273": {
+        "type": "shopify://apps/powerx-functions/blocks/powerx-app-embed/dff772ea-9dfb-4eb2-9268-03f89642169d",
+        "disabled": false,
+        "settings": {
+          "tracked_parameters": "powerx_attr",
+          "remove_parameter": "powerx_rm_attr",
+          "expire_after_hours": 5
+        }
       }
     }
   }
