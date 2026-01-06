@@ -25,19 +25,6 @@
       },
       "thank_you": {
         "return_to_store_link_label": "©"
-      },
-      "stock": {
-        "return_to_store_label": "https://www.darkness.com.br"
-      },
-      "wallets": {
-        "return_to_store": "https://www.darkness.com.br"
-      },
-      "shop_pay_external": {
-        "return_to_store": "https://www.darkness.com.br",
-        "return_to_store_simple": "https://www.darkness.com.br"
-      },
-      "remote_merchandise_only": {
-        "return_to_store_label": "https://www.darkness.com.br"
       }
     }
   }
