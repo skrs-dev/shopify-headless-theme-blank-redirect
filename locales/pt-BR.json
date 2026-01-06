@@ -24,5 +24,10 @@
         "invalid_selected_address_with_update_link": "O endereço selecionado é inválido, verifique se há caracteres especiais. {{ update_address_link }} ou escolha outro."
       }
     }
+  },
+  "customer_accounts": {
+    "navigation_and_structure": {
+      "go_to_store_link": "https://www.darkness.com.br"
+    }
   }
 }
