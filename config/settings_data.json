@@ -32,6 +32,14 @@
           "remove_parameter": "powerx_rm_attr",
           "expire_after_hours": 5
         }
+      },
+      "497739090016974244": {
+        "type": "shopify://apps/insider/blocks/app-embed/c7b01eeb-6b78-48a3-a1bb-28dbc584bd41",
+        "disabled": false,
+        "settings": {
+          "insider_object": true,
+          "insider_tag": true
+        }
       }
     }
   }
