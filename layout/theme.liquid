@@ -161,11 +161,6 @@
     <link rel="preload" as="font" href="{{ settings.type_header_font | font_url }}" type="font/woff2" crossorigin>
     {%- endunless -%}
 
-    {% comment %}
-    Should redirect if all conditions are met:
-    - The template is defined (will be undefined for app proxies like /apps|a|community|tools/*)
-    - The current template is not the login page, unless multipass login is enabled
-    {% endcomment %}
     {%- liquid
       if template != blank
         if template.name != 'login' or settings.multipass_login
@@ -187,7 +182,6 @@
         var currentHostname = window.location.hostname;
         var STORAGE_KEY = 'customer-last-redirect';
 
-        // Função para salvar no localStorage
         function saveLastRedirect(url) {
           try {
             localStorage.setItem(STORAGE_KEY, url);
@@ -197,9 +191,16 @@
           }
         }
 
-        // Prepara a URL de redirecionamento
+        function getLastRedirectFromStorage() {
+          try {
+            return localStorage.getItem(STORAGE_KEY);
+          } catch (error) {
+            console.error('[Customer Metafield] Erro ao ler do localStorage:', error);
+            return null;
+          }
+        }
+
         function prepareRedirectUrl(url) {
-          // Se não começar com http:// ou https://, adiciona https://
           if (!url.startsWith('http://') && !url.startsWith('https://')) {
             return 'https://' + url;
           }
@@ -208,25 +209,29 @@
 
         var redirectUrl = null;
 
-        // Prioridade: 1. Customer metafield, 2. Storefront hostname do schema
         if (customerLastLink && customerLastLink.trim() !== '') {
           console.log('[Customer Metafield] Metafield encontrado:', customerLastLink);
           
-          // Salva no localStorage antes de redirecionar
           saveLastRedirect(customerLastLink);
           
           redirectUrl = prepareRedirectUrl(customerLastLink);
-        } else if (storefrontHostname && storefrontHostname.trim() !== '') {
-          console.log('[Customer Metafield] Usando storefront_hostname do schema:', storefrontHostname);
-          
-          // Se o hostname atual for diferente do storefront, redireciona
-          if (currentHostname !== storefrontHostname) {
-            redirectUrl = window.location.href.replace(currentHostname, storefrontHostname);
-          } else {
-            console.log('[Customer Metafield] Já está no hostname correto. Não há redirecionamento.');
-          }
         } else {
-          console.log('[Customer Metafield] Nenhum metafield ou storefront_hostname encontrado. Não há redirecionamento.');
+          var storedRedirect = getLastRedirectFromStorage();
+          
+          if (storedRedirect && storedRedirect.trim() !== '') {
+            console.log('[Customer Metafield] Usando link salvo no localStorage:', storedRedirect);
+            redirectUrl = prepareRedirectUrl(storedRedirect);
+          } else if (storefrontHostname && storefrontHostname.trim() !== '') {
+            console.log('[Customer Metafield] Usando storefront_hostname do schema:', storefrontHostname);
+            
+            if (currentHostname !== storefrontHostname) {
+              redirectUrl = window.location.href.replace(currentHostname, storefrontHostname);
+            } else {
+              console.log('[Customer Metafield] Já está no hostname correto. Não há redirecionamento.');
+            }
+          } else {
+            console.log('[Customer Metafield] Nenhum metafield, localStorage ou storefront_hostname encontrado. Não há redirecionamento.');
+          }
         }
 
         if (redirectUrl) {
