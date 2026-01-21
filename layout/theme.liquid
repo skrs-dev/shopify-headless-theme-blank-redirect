@@ -166,401 +166,74 @@
     - The template is defined (will be undefined for app proxies like /apps|a|community|tools/*)
     - The current template is not the login page, unless multipass login is enabled
     {% endcomment %}
-    {%- assign should_redirect = template != blank and template.name != 'login' or settings.multipass_login -%}
+    {%- liquid
+      if template != blank
+        if template.name != 'login' or settings.multipass_login
+          assign should_redirect = true
+        else
+          assign should_redirect = false
+        endif
+      else
+        assign should_redirect = false
+      endif
+    -%}
     {%- assign customer_last_link = customer.metafields.custom.last_link -%}
 
     {%- if should_redirect -%}
     <script>
-      /**
-       * Utilitário para gerenciar localStorage cross-domain usando iframe
-       * Baseado em: https://jcubic.wordpress.com/2014/06/20/cross-domain-localstorage/
-       * 
-       * NOTA: O Shopify pode bloquear iframes com CSP (Content Security Policy).
-       * Se o iframe falhar, o código automaticamente usa cookies como fallback.
-       */
-      function CrossDomainStorage(iframeUrl) {
-        this.iframe = null;
-        this.iframeUrl = iframeUrl;
-        this.messageHandlers = {};
-        this.messageId = 0;
-        this.ready = false;
-        this.readyPromise = this.init();
-      }
-
-      CrossDomainStorage.prototype.init = function () {
-        var self = this;
-        return new Promise(function (resolve, reject) {
-          // Cria o iframe
-          self.iframe = document.createElement('iframe');
-          self.iframe.style.display = 'none';
-          self.iframe.src = self.iframeUrl;
-
-          // Timeout para detectar se o iframe não carregar (CSP bloqueando)
-          var timeout = setTimeout(function () {
-            if (!self.ready) {
-              console.warn('[CrossDomainStorage] Iframe não carregou a tempo (possível bloqueio CSP)');
-              reject(new Error('Iframe timeout - CSP pode estar bloqueando'));
-            }
-          }, 5000);
-
-          // Tratamento de erro no iframe
-          self.iframe.onerror = function () {
-            clearTimeout(timeout);
-            console.error('[CrossDomainStorage] Erro ao carregar iframe (CSP bloqueando?)');
-            reject(new Error('Erro ao carregar iframe - CSP pode estar bloqueando'));
-          };
-
-          // Detecta se o iframe foi bloqueado imediatamente (CSP)
-          // Se o iframe não tiver contentWindow após um tempo, foi bloqueado
-          setTimeout(function () {
-            if (!self.ready && self.iframe) {
-              try {
-                // Tenta acessar o contentWindow
-                var test = self.iframe.contentWindow;
-                if (!test) {
-                  clearTimeout(timeout);
-                  reject(new Error('Iframe bloqueado por CSP - frame-ancestors'));
-                }
-              } catch (e) {
-                // Se der erro ao acessar, foi bloqueado
-                clearTimeout(timeout);
-                reject(new Error('Iframe bloqueado por CSP: ' + e.message));
-              }
-            }
-          }, 100);
-
-          // Aguarda o iframe carregar
-          self.iframe.onload = function () {
-            clearTimeout(timeout);
-            // Verifica se o iframe realmente carregou (não foi bloqueado por CSP)
-            try {
-              // Tenta acessar o contentWindow para verificar se não foi bloqueado
-              if (self.iframe.contentWindow) {
-                self.ready = true;
-                resolve();
-              } else {
-                reject(new Error('Iframe bloqueado por CSP'));
-              }
-            } catch (e) {
-              // Se der erro ao acessar, provavelmente foi bloqueado por CSP
-              reject(new Error('Iframe bloqueado por CSP: ' + e.message));
-            }
-          };
-
-          // Adiciona o iframe ao DOM
-          document.body.appendChild(self.iframe);
-
-          // Listener para mensagens do iframe
-          window.addEventListener('message', function (event) {
-            self.handleMessage(event);
-          });
-        });
-      };
-
-      CrossDomainStorage.prototype.handleMessage = function (event) {
-        // Extrai o domínio do iframe URL
-        var iframeDomain = new URL(this.iframeUrl).origin;
-
-        // Verifica se a mensagem veio do iframe
-        if (event.origin !== iframeDomain) {
-          return;
-        }
-
-        try {
-          var response = JSON.parse(event.data);
-          var handler = this.messageHandlers[response.id];
-
-          if (handler) {
-            handler(response.data);
-            delete this.messageHandlers[response.id];
-          }
-        } catch (error) {
-          console.error('Erro ao processar mensagem do iframe:', error);
-        }
-      };
-
-      CrossDomainStorage.prototype.sendMessage = function (method, key, data) {
-        var self = this;
-        return this.readyPromise.then(function () {
-          if (!self.iframe || !self.iframe.contentWindow) {
-            throw new Error('Iframe não está pronto');
-          }
-
-          return new Promise(function (resolve) {
-            var id = 'msg_' + self.messageId++;
-            var message = {
-              id: id,
-              key: key,
-              method: method
-            };
-
-            if (data) {
-              message.data = data;
-            }
-
-            self.messageHandlers[id] = resolve;
-            var iframeOrigin = new URL(self.iframeUrl).origin;
-            self.iframe.contentWindow.postMessage(
-              JSON.stringify(message),
-              iframeOrigin
-            );
-          });
-        });
-      };
-
-      CrossDomainStorage.prototype.get = function (key) {
-        return this.sendMessage('get', key);
-      };
-
-      CrossDomainStorage.prototype.set = function (key, value) {
-        return this.sendMessage('set', key, value);
-      };
-
-      CrossDomainStorage.prototype.remove = function (key) {
-        return this.sendMessage('remove', key);
-      };
-
-      // URL da loja liquid (onde o iframe será hospedado)
-      var LIQUID_STORE_URL = 'https://totvsibi-integralmedica-dc.myshopify.com';
-      var STORAGE_KEY = 'last-visited';
-      var CUSTOMER_LINK_KEY = 'customer-last-link';
-      var storageInstance = null;
-      var storageFailed = false; // Flag para indicar se o storage falhou
-
-      function getStorage() {
-        if (!storageInstance && !storageFailed) {
-          try {
-            storageInstance = new CrossDomainStorage(LIQUID_STORE_URL + '/pages/cross-local-storage');
-            // Se o init falhar, marca como falhou
-            storageInstance.readyPromise.catch(function (error) {
-              console.warn('[Last Visited] CrossDomainStorage falhou, usando fallback:', error);
-              storageFailed = true;
-              storageInstance = null;
-            });
-          } catch (error) {
-            console.warn('[Last Visited] Erro ao criar CrossDomainStorage, usando fallback:', error);
-            storageFailed = true;
-          }
-        }
-        return storageInstance;
-      }
-
-      function getCookie(name) {
-        name = name + '=';
-        var decodedCookie = decodeURIComponent(document.cookie);
-        var cookies = decodedCookie.split(';');
-        for (var i = 0; i < cookies.length; i++) {
-          var cookie = cookies[i].trim();
-          if (cookie.indexOf(name) == 0) {
-            return cookie.substring(name.length, cookie.length);
-          }
-        }
-      }
-
-      function deleteCookie(name) {
-        document.cookie = name + '=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
-      }
-
-      // Função para obter last-visited do localStorage cross-domain com fallback para cookie
-      function getLastVisitedDomain() {
-        var storage = getStorage();
-
-        // Se o storage falhou ou não está disponível, usa cookie como fallback
-        if (!storage || storageFailed) {
-          console.log('[Last Visited] Usando cookie como fallback (iframe bloqueado por CSP)');
-          return Promise.resolve(getCookie(STORAGE_KEY));
-        }
-
-        return storage.get(STORAGE_KEY).catch(function (error) {
-          console.warn('[Last Visited] Erro ao obter do localStorage, usando cookie:', error);
-          storageFailed = true;
-          // Fallback para cookie
-          return getCookie(STORAGE_KEY);
-        });
-      }
-
-      // Função para salvar last-visited no localStorage cross-domain com fallback para cookie
-      function setLastVisitedDomain(domain) {
-        var storage = getStorage();
-
-        // Se o storage falhou ou não está disponível, usa cookie como fallback
-        if (!storage || storageFailed) {
-          console.log('[Last Visited] Salvando em cookie (iframe bloqueado por CSP)');
-          document.cookie = STORAGE_KEY + '=' + domain + '; Path=/; Max-Age=31536000; SameSite=Lax';
-          return Promise.resolve();
-        }
-
-        return storage.set(STORAGE_KEY, domain).catch(function (error) {
-          console.warn('[Last Visited] Erro ao salvar no localStorage, usando cookie:', error);
-          storageFailed = true;
-          // Fallback para cookie
-          document.cookie = STORAGE_KEY + '=' + domain + '; Path=/; Max-Age=31536000; SameSite=Lax';
-        });
-      }
-
-      // Função para obter o customer link do localStorage
-      function getCustomerLinkFromStorage() {
-        var storage = getStorage();
-        if (!storage || storageFailed) {
-          return Promise.resolve(getCookie(CUSTOMER_LINK_KEY));
-        }
-        return storage.get(CUSTOMER_LINK_KEY).catch(function () {
-          return getCookie(CUSTOMER_LINK_KEY);
-        });
-      }
-
-      // Função para salvar o customer link no localStorage
-      function setCustomerLinkToStorage(link) {
-        var storage = getStorage();
-        if (!storage || storageFailed) {
-          document.cookie = CUSTOMER_LINK_KEY + '=' + link + '; Path=/; Max-Age=31536000; SameSite=Lax';
-          return Promise.resolve();
-        }
-        return storage.set(CUSTOMER_LINK_KEY, link).catch(function () {
-          document.cookie = CUSTOMER_LINK_KEY + '=' + link + '; Path=/; Max-Age=31536000; SameSite=Lax';
-        });
-      }
-
       if (!window.Shopify.designMode) {
-        var currentHostname = window.location.hostname;
-        var storefrontHostname = "{{ settings.storefront_hostname }}";
         var customerLastLink = "{{ customer.metafields.custom.last_link }}";
+        var storefrontHostname = "{{ settings.storefront_hostname }}";
+        var currentHostname = window.location.hostname;
+        var STORAGE_KEY = 'customer-last-redirect';
 
-        {% comment %} 
-          Handle customer metafield redirect logic
-          - Prioridade: 1. Metafield do customer, 2. localStorage do customer, 3. last-visited, 4. settings
-        {% endcomment %}
+        // Função para salvar no localStorage
+        function saveLastRedirect(url) {
+          try {
+            localStorage.setItem(STORAGE_KEY, url);
+            console.log('[Customer Metafield] Último redirecionamento salvo no localStorage:', url);
+          } catch (error) {
+            console.error('[Customer Metafield] Erro ao salvar no localStorage:', error);
+          }
+        }
 
-        // Inicializa o redirecionamento
-        getLastVisitedDomain().then(function (lastVisitedDomain) {
-          return getCustomerLinkFromStorage().then(function (storedCustomerLink) {
-            console.log('[Last Visited] localStorage last-visited:', lastVisitedDomain);
-            console.log('[Last Visited] Customer metafield:', customerLastLink);
-            console.log('[Last Visited] localStorage customer-link:', storedCustomerLink);
-            console.log('[Last Visited] Storefront hostname:', storefrontHostname);
-            console.log('[Last Visited] Current hostname:', currentHostname);
+        // Prepara a URL de redirecionamento
+        function prepareRedirectUrl(url) {
+          // Se não começar com http:// ou https://, adiciona https://
+          if (!url.startsWith('http://') && !url.startsWith('https://')) {
+            return 'https://' + url;
+          }
+          return url;
+        }
 
-            var redirectUrl;
-            var targetHostname;
+        var redirectUrl = null;
 
-            // Prioridade: 1. Metafield do customer, 2. localStorage do customer, 3. last-visited, 4. settings
-            if (customerLastLink) {
-              // Se o metafield existe, usa ele diretamente e salva no localStorage
-              redirectUrl = customerLastLink;
-              console.log('[Last Visited] Usando metafield do customer e salvando no localStorage');
-              setCustomerLinkToStorage(customerLastLink);
-            } else if (storedCustomerLink) {
-              // Se não tem metafield mas tem no localStorage, usa o localStorage
-              redirectUrl = storedCustomerLink;
-              console.log('[Last Visited] Metafield vazio, usando localStorage do customer');
-            } else {
-              // Se não tem metafield nem localStorage, usa a lógica original de hostname
-              // Mas só se storefrontHostname estiver configurado
-              if (!storefrontHostname) {
-                console.log('[Last Visited] Sem metafield, localStorage e storefront_hostname. Não há redirect.');
-                return;
-              }
-
-              targetHostname = lastVisitedDomain && lastVisitedDomain !== storefrontHostname
-                ? lastVisitedDomain
-                : storefrontHostname;
-
-              console.log('[Last Visited] Target hostname (will redirect to):', targetHostname);
-
-              // Salva o domínio atual se for diferente do último visitado
-              if (currentHostname !== lastVisitedDomain) {
-                setLastVisitedDomain(currentHostname);
-              }
-
-              if (currentHostname !== targetHostname) {
-                redirectUrl = window.location.href.replace(currentHostname, targetHostname);
-              } else {
-                // Mesmo hostname, não precisa redirecionar
-                return;
-              }
-            }
-
-            if (redirectUrl) {
-              // Se for URL completa (metafield ou localStorage), usa diretamente
-              var isFullUrl = redirectUrl.startsWith('http://') || redirectUrl.startsWith('https://');
-              
-              if (isFullUrl) {
-                window.storefrontRedirectUrl = redirectUrl;
-                console.log('[Last Visited] Redirecionando para:', redirectUrl);
-                window.location.replace(redirectUrl);
-                return;
-              }
-
-              // Para hostname, processa normalmente com custom redirects e discount codes
-              redirectUrl = new URL(redirectUrl);
-
-              var customRedirectsStr = "{{ settings.custom_redirects | newline_to_br | strip_newlines | replace: ' ', '' }}";
-              if (customRedirectsStr) {
-                var customRedirects = customRedirectsStr.split('<br/>');
-
-                for (var cri = 0; cri < customRedirects.length; cri += 1) {
-                  var redirect = customRedirects[cri].split('>');
-                  var fromPath = redirect[0];
-                  var toPath = redirect[1];
-
-                  if (fromPath && toPath && redirectUrl.href.startsWith('https://' + targetHostname + fromPath)) {
-                    redirectUrl = new URL(redirectUrl.href.replace(targetHostname + fromPath, targetHostname + toPath));
-                    break;
-                  }
-                }
-              }
-
-              {% comment %} 
-                Handle discount code logic(e.g.xxx.myshopify.com / discount / freeshipping ? redirect =/products)
-                - Add discount code as param to the redirect URL if the`discount_code` cookie exists
-                  - Cookie is deleted after to prevent it from being automatically added to other routes
-              {% endcomment %}
-              var discountCode = getCookie('discount_code');
-              if (discountCode) {
-                redirectUrl.searchParams.append("discount", discountCode);
-                deleteCookie("discount_code");
-              }
-
-              window.storefrontRedirectUrl = redirectUrl;
-              window.location.replace(redirectUrl);
-            }
-          });
-        }).catch(function (error) {
-          // Se tudo falhar, usa o customerLastLink ou storefrontHostname padrão
-          console.error('[Last Visited] Erro ao obter last-visited, usando fallback:', error);
-
-          var redirectUrl;
+        // Prioridade: 1. Customer metafield, 2. Storefront hostname do schema
+        if (customerLastLink && customerLastLink.trim() !== '') {
+          console.log('[Customer Metafield] Metafield encontrado:', customerLastLink);
           
-          // Prioridade: metafield > localStorage > settings
-          if (customerLastLink) {
-            redirectUrl = customerLastLink;
+          // Salva no localStorage antes de redirecionar
+          saveLastRedirect(customerLastLink);
+          
+          redirectUrl = prepareRedirectUrl(customerLastLink);
+        } else if (storefrontHostname && storefrontHostname.trim() !== '') {
+          console.log('[Customer Metafield] Usando storefront_hostname do schema:', storefrontHostname);
+          
+          // Se o hostname atual for diferente do storefront, redireciona
+          if (currentHostname !== storefrontHostname) {
+            redirectUrl = window.location.href.replace(currentHostname, storefrontHostname);
           } else {
-            var storedLink = getCookie(CUSTOMER_LINK_KEY);
-            if (storedLink) {
-              redirectUrl = storedLink;
-            } else if (storefrontHostname && currentHostname !== storefrontHostname) {
-              redirectUrl = window.location.href.replace(currentHostname, storefrontHostname);
-            } else {
-              return; // Sem metafield, localStorage ou storefrontHostname, não há redirect
-            }
+            console.log('[Customer Metafield] Já está no hostname correto. Não há redirecionamento.');
           }
+        } else {
+          console.log('[Customer Metafield] Nenhum metafield ou storefront_hostname encontrado. Não há redirecionamento.');
+        }
 
-          if (redirectUrl) {
-            var isFullUrl = redirectUrl.startsWith('http://') || redirectUrl.startsWith('https://');
-            
-            if (!isFullUrl) {
-              redirectUrl = new URL(redirectUrl);
-              var discountCode = getCookie('discount_code');
-              if (discountCode) {
-                redirectUrl.searchParams.append("discount", discountCode);
-                deleteCookie("discount_code");
-              }
-            }
-
-            window.storefrontRedirectUrl = redirectUrl instanceof URL ? redirectUrl.href : redirectUrl;
-            window.location.replace(window.storefrontRedirectUrl);
-          }
-        });
+        if (redirectUrl) {
+          window.storefrontRedirectUrl = redirectUrl;
+          console.log('[Customer Metafield] Redirecionando para:', redirectUrl);
+          window.location.replace(redirectUrl);
+        }
       }
     </script>
     {%- endif -%}
@@ -569,7 +242,13 @@
 <body>
   {{ content_for_layout }}
 
-  {%- if should_redirect -%}
+  {%- liquid
+    assign has_redirect_link = false
+    if customer_last_link != blank or settings.storefront_hostname != blank
+      assign has_redirect_link = true
+    endif
+  -%}
+  {%- if should_redirect and has_redirect_link -%}
   <div class="redirect">
     <h1>Redirecting...</h1>
     <p>
@@ -581,10 +260,8 @@
         {%- endif -%}
       {%- elsif settings.storefront_hostname != blank -%}
         <a id="redirect-link" href="https://{{ settings.storefront_hostname }}/">Click here</a>
-      {%- else -%}
-        <a id="redirect-link" href="#">Click here</a>
       {%- endif -%}
-      if you are not automically redirected.
+      if you are not automatically redirected.
     </p>
     <script>
       if (!window.Shopify.designMode) {
@@ -592,9 +269,6 @@
         setTimeout(function() {
           if (window.storefrontRedirectUrl) {
             redirectLink.href = window.storefrontRedirectUrl;
-          } else if (redirectLink.href === '#' || redirectLink.href.endsWith('#')) {
-            // Se não há redirect disponível, esconde a mensagem
-            document.querySelector('.redirect').innerHTML = '<h1>Redirect URL not set</h1><p>Configure the redirects in "Theme settings > Storefront" or set the customer metafield "custom.last_link".</p>';
           }
         }, 200);
       }
