@@ -1,0 +1,31 @@
+/*
+ * ------------------------------------------------------------
+ * IMPORTANT: The contents of this file are auto-generated.
+ *
+ * This file may be updated by the Shopify admin language editor
+ * or related systems. Please exercise caution as any changes
+ * made to this file may be overwritten.
+ * ------------------------------------------------------------
+ */
+{
+  "shopify": {
+    "checkout": {
+      "localized_fields": {
+        "additional_information": {
+          "tax_credential_br": "CPF",
+          "shipping_credential_br": "CPF",
+          "title": "Informações adicionais (apenas CPF)"
+        }
+      },
+      "customer_account": {
+        "invalid_address": "O endereço selecionado é inválido, verifique se há caracteres especiais. {{ update_address_link }} ou escolha outro."
+      },
+      "shipping_errors": {
+        "invalid_selected_address_with_update_link": "O endereço selecionado é inválido, verifique se há caracteres especiais. {{ update_address_link }} ou escolha outro."
+      },
+      "thank_you": {
+        "return_to_store_link_label": "©"
+      }
+    }
+  }
+}
