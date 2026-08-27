@@ -14,7 +14,7 @@
         "additional_information": {
           "tax_credential_br": "CPF",
           "shipping_credential_br": "CPF",
-          "title": "Informações adicionais (apenas CPF)"
+          "title": "CPF (Apenas números)"
         }
       },
       "customer_account": {
