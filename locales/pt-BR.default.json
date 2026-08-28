@@ -18,7 +18,9 @@
   },
   "gift_cards": {
     "issued": {
-      "add_to_apple_wallet": "Adicionar à Apple Wallet"
+      "add_to_apple_wallet": "Adicionar à Apple Wallet",
+      "remaining": "Restam {{ balance }}",
+      "title": "Seu vale-presente de {{ value }} para {{ shop }}!"
     }
   },
   "templates": {
