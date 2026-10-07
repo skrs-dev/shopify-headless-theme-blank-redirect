@@ -86,7 +86,7 @@
   --spacing-sections-desktop: {{ settings.spacing_sections }}px;
   --spacing-sections-mobile: {% if settings.spacing_sections < 24 %}{{ settings.spacing_sections }}{% else %}{{
     settings.spacing_sections | times: 0.7 | round | at_least: 20 }}{% endif %}px; --buttons-radius: {{
-    settings.buttons_radius }}px; --buttons-radius-outset: {% if settings.buttons_radius> 0 %}{{ settings.buttons_radius
+    settings.buttons_radius }}px; --buttons-radius-outset: {% if settings.buttons_radius %}{{ settings.buttons_radius
     | plus: settings.buttons_border_thickness }}{% else %}0{% endif %}px;
     --buttons-border-width: {% if settings.buttons_border_opacity > 0 %}{{ settings.buttons_border_thickness }}{% else
     %}0{% endif %}px;
@@ -283,3 +283,13 @@
 </body>
 
 </html>
+{% comment %}
+
+This file has been rewritten to preserve the original behavior.
+
+---
+Changes:
+- from: "{% if settings.buttons_radius> 0 %}"
+  to: "{% if settings.buttons_radius %}"
+  position: 4758..4790
+{% endcomment %}
