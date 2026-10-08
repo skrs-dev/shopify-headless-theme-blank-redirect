@@ -172,7 +172,12 @@
         assign should_redirect = false
       endif
     -%}
-    {%- assign customer_last_link = customer.metafields.custom.last_link -%}
+    {%- liquid
+      assign customer_last_link = customer.metafields.custom.last_link.value
+      if customer_last_link contains '/account' or customer_last_link contains '/thank-you'
+        assign customer_last_link = ''
+      endif
+    -%}
 
     {%- if should_redirect -%}
     <script>
@@ -207,9 +212,20 @@
           return url;
         }
 
+        // /account e /thank-you exigem sessão no headless: sem ela, o cliente
+        // cai no login da Shopify em vez da loja. Nunca servem de destino.
+        function isStorefrontPage(url) {
+          try {
+            var path = new URL(prepareRedirectUrl(url)).pathname;
+            return !/^\/(account|thank-you)(\/|$)/i.test(path);
+          } catch (error) {
+            return false;
+          }
+        }
+
         var redirectUrl = null;
 
-        if (customerLastLink && customerLastLink.trim() !== '') {
+        if (customerLastLink && customerLastLink.trim() !== '' && isStorefrontPage(customerLastLink)) {
           console.log('[Customer Metafield] Metafield encontrado:', customerLastLink);
           
           saveLastRedirect(customerLastLink);
@@ -217,7 +233,14 @@
           redirectUrl = prepareRedirectUrl(customerLastLink);
         } else {
           var storedRedirect = getLastRedirectFromStorage();
-          
+
+          if (storedRedirect && !isStorefrontPage(storedRedirect)) {
+            try {
+              localStorage.removeItem(STORAGE_KEY);
+            } catch (error) {}
+            storedRedirect = null;
+          }
+
           if (storedRedirect && storedRedirect.trim() !== '') {
             console.log('[Customer Metafield] Usando link salvo no localStorage:', storedRedirect);
             redirectUrl = prepareRedirectUrl(storedRedirect);
