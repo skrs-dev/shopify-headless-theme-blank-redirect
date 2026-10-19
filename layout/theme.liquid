@@ -6,7 +6,11 @@
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="">
-  <link rel="canonical" href="{{ canonical_url }}">
+  {%- comment -%}
+    O conteúdo da loja vive no headless; aqui as páginas só redirecionam por JS
+    e não podem concorrer com as do www no Google.
+  {%- endcomment -%}
+  <meta name="robots" content="noindex">
   <link rel="preconnect" href="https://cdn.shopify.com" crossorigin>
 
   {%- if settings.favicon != blank -%}
