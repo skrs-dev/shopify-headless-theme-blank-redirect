@@ -28,5 +28,15 @@
         "view_business_customer_account": "."
       }
     }
+  },
+  "customer_accounts": {
+    "sign_in": {
+      "step_one": {
+        "subheading": "Insira seu e-mail para receber um código de verificação. Se ele não chegar, confira também a caixa de spam."
+      },
+      "step_two": {
+        "subheading": "Enviamos o código para %{email}. Não encontrou? Confira as pastas Spam, Promoções e Atualizações. O remetente é naoresponda@integralmedica.com."
+      }
+    }
   }
 }
