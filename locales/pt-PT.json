@@ -27,5 +27,15 @@
         "return_to_store_link_label": "©"
       }
     }
+  },
+  "customer_accounts": {
+    "sign_in": {
+      "step_one": {
+        "subheading": "Digite seu e-mail para receber o código de acesso."
+      },
+      "step_two": {
+        "subheading": "Código enviado para %{email}."
+      }
+    }
   }
 }
